@@ -1,15 +1,17 @@
 const fs = require('fs');
 const path = require('node:path');
 const axios = require('axios');
-const { url } = require('inspector');
 
-
+//si la ruta existe
 const findPath = (route) => fs.existsSync(route);
 // si la ruta es un directorio
 const theDirectory = (route) => fs.statSync(route).isDirectory();
+// si es un archivo md
 const archiveMD = (route) => path.extname(route);
+//si es una carpeta
 const MdFile = (file) => path.extname(file);
 
+//convertir el path en absoluto
 const pathAbsolute = (route) => {
   if (!path.isAbsolute(route)) {
     return path.resolve(route);
@@ -17,112 +19,99 @@ const pathAbsolute = (route) => {
   return route;
 }
 
-const searchMD = (route) => {
+// burcar los archivos md
+function searchMD(route) {
   let allFiles = []
+
   if (!theDirectory(route)) {
-    const fileMD = archiveMD(route) === '.md' ? route : 'No es un archivo md'
-    return allFiles.push(fileMD);
+    archiveMD(route) === '.md' ? route : 'no existe la ruta'
+    // console.log('29 MD', route)
+    allFiles.push(route);
+    return allFiles.flatMap((file) => {
+      // console.log('RESULT', file)
+      return file
+    })
+
   }
   const files = fs.readdirSync(route);
   files.forEach((file) => {
     const directoryMD = MdFile(file) === '.md' ? file : '';
+    // console.log('39 MD', directoryMD)
     return allFiles.push(directoryMD);
-  })
-  return allFiles.filter(file => MdFile(file) === '.md').map((archivo) => {
+
+  });
+
+  //console.log('44 MD', allFiles)
+  return allFiles.filter(file => MdFile(file) === '.md').flatMap((archivo) => {
+    //console.log('45 MD', archivo)
     return route.concat('/', archivo);
   })
 }
 
-//const arr = searchMD.toString()
-
-
+//leer cada link
 const readFile = (route) => {
   return new Promise((resolve, reject) => {
     fs.readFile(route, 'utf-8', (error, text) => {
+     // console.log('55 MD', getLinks(text))
+
       if (error) {
         reject('Hay un problema para leer tu archivo, verifica que sea valido');
       }
-      resolve(getLinks(text))
+      
+      resolve(text)
     });
   });
 };
-const expression = /(https:\/\/)[a-zA-z0-9-_.]+\/[a-zA-z0-9-_./]+/g;
-const getLinks = (text) => text.match(expression);
 
-const verifyUrl = (links,absoPath) => {
-  const arrayObjLink = links.map((link) => {
-   console.log(link)
-   // console.log(axios.get(link))
-    return axios.get(link)
-    .then((resp) => {
-      // console.log(arrayObjLink)
-      return {
-        href: link,
-        text: 'cuando yo pueda de que va el link',
-        file: absoPath,
-        status: resp.status,
-        ok: resp.statusText,
+
+const getLinks = (text) => {
+  return new Promise((resolve, reject) => {
+    const links = [];
+    readFile(text).then((data) => {
+      const regex = /\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g;
+      let match = regex.exec(data);
+      while (match !== null) {
+        links.push({
+          href: match[2],
+          text: match[1],
+          file: text,
+        });
+        match = regex.exec(data);
       }
+      resolve(links);
+      //console.log(links);
     })
-    .catch(()=>{
-      return{
-        href: link,
-        text: 'cuando yo pueda de que va el link',
-        file: absoPath,
-        status: 404,
-        ok: 'FAIL',
-      
-      }
-    })
-
-  })
-
- return Promise.all(arrayObjLink);
-
+      .catch((error) => reject(error));
+  });
 }
+//validar el url true
+const verifyUrl = (links) => {
+  //console.log(link)
+ const arrlinks = links.map((link) => {
 
-const verifyUrlFalse = (links,absoPath) => {
-  const arrayObjLink = links.map((link) => {
-      return {
-        href: link,
-        text: 'cuando yo pueda de que va el link',
-        file: absoPath,
-      }
-    })
-    return arrayObjLink
-  }
-
-// const verifyUrl = (url, route) => {
-//   // console.log(url)
-//   return new Promise((resolve) => {
-//     axios.get(url)
-//       .then((resp) => {
-//         resolve({
-//           href: url,
-//           //text: url,
-//           file: route,
-//           status: resp.status,
-//           message: resp.statusText,
-//         })
-//       })
-
-//       .catch((error) => {
-//         console.log(error)
-//         // handle error
-//         resolve((`ERROR, url defectuoso ${url} no existe, o esta mal escrito`));
-//       })
-
-//   })
-// }
-
-//verifyUrl("http://google.comxyz").then(data => console.log(data))
-//verifyUrl("https://user-images.githubusercontent.com/110297/42118443-b7a5f1f0-7bc8-11e8-96ad-9cc5593715a6.jpg").then(data => console.log(data))
-
+    // console.log(axios.get(link.href))
+    return axios.get(link.href)
+      .then((resp) => {
+        //console.log('102 MD',resp)
+        return{ ...link,
+           status: resp.status,
+           ok: resp.statusText
+        }
+      })
+      .catch(() => {
+        return { ...link,
+          status: 'FAIL',
+          ok: 404
+       }
+      })
+  })
+  return Promise.all(arrlinks);
+}
 module.exports = {
   findPath,
   pathAbsolute,
   searchMD,
-  readFile,
   verifyUrl,
-  verifyUrlFalse,
+  readFile,
+  getLinks
 };
